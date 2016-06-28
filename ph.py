@@ -76,13 +76,15 @@ class Filtration():
         self.data.generate_dict()
         self.data.generate_distancelist()
         self.simplicies = [] #this is a list of simplicies. A simplex is a list of points so [p1] is a 0 simple, [p1,p2] is a 2 and so one
+        self.simplicies_index = dict() #dict where the index of a simplix in self.simplices corresponds to the epsilon at which it was created
         self.display = d
+        self.simplices = []
         #if d and data.dim == 2:
         #    self.fig = plt.figure()
 
     def build_epsilon(self,epsilon):
         avaliable_edges = (filter(lambda x: self.data.pdict[x] <= epsilon, self.data.pdict.keys()))
-        #        print(avaliable_edges)
+        #print(avaliable_edges)
         temp_sim = []
         for x in range(0,self.data.dim+1):
             #print(x)
@@ -95,7 +97,8 @@ class Filtration():
                 #print(lastdim)
                 newdim = []
                 for y in lastdim:
-                    extensions = map(lambda z: [z], list(set(map(lambda z: z[1], filter(lambda x: x[0] in y and x[1] not in y , avaliable_edges))))) #still flawed...
+                    extensions = [[z[1]] for z in avaliable_edges if all(map(lambda x: (x,z[1]) in avaliable_edges,y))]
+                    #extensions = map(lambda z: [z], list(set(map(lambda z: z[1], filter(lambda x: x[0] in y and x[1] not in y , avaliable_edges))))) #still flawed...
                     #extensions = map(lambda x: [x[1]], filter(lambda x: all(map(lambda z: (z == x[0]) and z != x, y)), avaliable_edges))
                     #print("o:", y,"ext:",extensions)
                     #for all points in the simplex, the point in the data is within epsilon of every point
@@ -112,43 +115,25 @@ class Filtration():
                 temp_sim.remove(x)
             except:
                 pass 
- #        lines = []
- #        points = [[],[]]
- #        for x in f7(avaliable_edges):
- #            if x[0] != x[1]:
- # #               lines.extend([[x[0][0],x[1][0]],[x[0][1],x[1][1]], 'b'])
- #                plt.plot([x[0][0],x[1][0]],[x[0][1],x[1][1]], 'b')
- #                plt.draw()
- #                plt.pause(0.1)
- #                print("erg")
 
-#        plt.plot(*lines)
-#        plt.draw()
-        # plotting region 
-        # for z in temp_sim:
-        #     line = [[],[]]
-        #     for y in z:
-        #         line[0].append(y[0])
-        #         line[1].append(y[1])
-        #     plt.plot(line)
-        #     plt.draw()
-        #     plt.pause(0.05)
-        # showing = concat(map(unzip,temp_sim))
-        # t = len(showing[0])
-        # if t > 0:        
-        #     plt.plot(showing,'ro')
-        #     plt.draw()
-        #     plt.pause(0.05)
+        if self.simplicies == []:
+            for i in range(0,len(temp_sim)):
+
+                self.simplicies_index[i] = (epsilon)
+        else:
+            s = len(self.simplicies)
+
+            e = s + len(temp_sim)
+
+            last_epsilon = self.simplicies_index[s-1]
+            for i in range(s,e):
+
+                self.simplicies_index[i] = (epsilon+last_epsilon)
+
         self.simplicies += temp_sim
             
     def build_simplex_complex(self):
         for x in self.data.distances:
-            # if self.display:
-            #     for p in self.data.points:
-            #         c = plt.Circle(p,x,color='b')
-            #         self.fig.gca().add_artist(c)
-            #                plt.draw()
-            #            plt.pause(5)
             self.build_epsilon(x)
 
     def build_boundary_matrix(self): #from here on out is an implementation of algorthims described in p2.pdf
@@ -182,6 +167,31 @@ class Filtration():
                     if ilow == jlow:
                         for x in range(0,self.simplicies_count):
                             self.boundary_matrix[x,j] = ((self.boundary_matrix[x,j] + self.boundary_matrix[x,i]) % 2) #over the field F_2
+
+    def read_barcodes(self):
+        barcode = []
+        lows = map(lambda j: self.low(j,self.boundary_matrix),range(0,self.simplicies_count))
+        for x in range(0,self.simplicies_count):
+            l = lows[x]
+            if l != None:
+                barcode.append(((l,self.simplicies_index[l]),(x,self.simplicies_index[x]))) #something is born with l and lies with x
+
+            else:
+                if x in lows:
+                    inverse_x = lows.index(x)
+                    barcode.append(((x,self.simplicies_index[x]),(inverse_x,self.simplicies_index[inverse_x])))
+                else:
+                    barcode.append(((x,self.simplicies_index[x]),(None,None))) #no death of hte feature
+        return(list(set(barcode)))
+
+    def run(self):
+        self.build_simplex_complex()
+        self.build_boundary_matrix()
+        self.boundary_to_barcodes()
+        return(self.read_barcodes())
+        
+                
+                
                             
             # while any([self.low(i,self.bardcode_matrix) == self.low(j,self.bardcode_matrix) and self.low(j,self.bardcode_matrix) != None for j in range(i,self.simplicies_count)]):
             #     for x in range(0,self.simplicies_count):
