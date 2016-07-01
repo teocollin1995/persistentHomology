@@ -89,6 +89,7 @@ class Filtration():
         if p:
             self.precomputed_boundary_matrix = computed_matrix
         if d and data.dim == 2:
+            self.r = None
             self.expand_factor = 10 #figure out appropraite way to calculate this.
             self.turtle = t
             self.turtle.hideturtle()
@@ -106,6 +107,12 @@ class Filtration():
             for x in self.data.points:
                 self.turtle.pen(pencolor="red")
                 draw_circle(self.expand_factor*x[0],self.expand_factor*x[1],r,self.turtle)
+                if self.r != None:
+                     self.turtle.pen(pencolor="white")
+                     draw_circle(self.expand_factor*x[0],self.expand_factor*x[1],self.r,self.turtle)
+                     self.turtle.pen(pencolor="red")
+            
+        self.r = r
         avaliable_edges = (filter(lambda x: self.data.pdict[x] <= epsilon, self.data.pdict.keys()))
         temp_sim = []
         for x in range(0,self.data.dim+1):
@@ -165,12 +172,14 @@ class Filtration():
                                 self.turtle.end_fill()
 
         self.simplicies += temp_sim
+        self.simplicies = f7(self.simplicies)
             
     def build_simplex_complex(self): #O(2^|S|-1)
-
-        for x in self.data.distances:
-            self.build_epsilon(x)
-
+        try:
+            for x in self.data.distances:
+                self.build_epsilon(x)
+        except KeyboardInterrupt:
+            return
     def build_boundary_matrix(self): 
         #from here on out is an implementation of algorthims described in p2.pdf
         self.simplicies_count = len(self.simplicies)
@@ -221,9 +230,15 @@ class Filtration():
         return(list(set(barcode)))
 
     def run(self):
+        print("Building Complex")
         self.build_simplex_complex()
+        print("Complex built")
+        print("Generating Boundary Matrix")
         self.build_boundary_matrix()
+        print("Generated Boundary Matrix")
+        print("Generating barcodes")
         self.boundary_to_barcodes()
+        print("Barcodes ready:")
         return(self.read_barcodes())
         
                 
