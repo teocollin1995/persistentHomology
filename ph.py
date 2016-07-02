@@ -4,6 +4,12 @@ import sympy as sy
 import itertools 
 import networkx
 import turtle as t
+#https://stackoverflow.com/questions/3025162/statistics-combinations-in-python
+from operator import mul    # or mul=lambda x,y:x*y
+from fractions import Fraction
+
+def nCk(n,k): 
+  return int( reduce(mul, (Fraction(n-i, i+1) for i in range(k)), 1) )
 
 def draw_circle(x,y,r,t):
     t.pu()
@@ -76,7 +82,7 @@ class Data():
 
 #d = [(0,0),(3,3),(6,0),(3,8),(7,9),(10,15),(13,9),(15,7),(19,2),(17,0),(26,0),(18,-5),(10,-7),(8,-11),(12,-10),(4,-3)]
 class Filtration():
-    def __init__(self,data, d = False,p =False, computed_matrix = None):
+    def __init__(self,data, d = False,p =False, computed_codes = None):
         self.data = data        #data is a member of the data class,
         self.data.generate_dict()
         self.data.generate_distancelist()
@@ -86,11 +92,10 @@ class Filtration():
         #dict where the index of a simplix in self.simplices corresponds to the epsilon at which it was created
         self.d = d #display
         self.p = p #present
-        if p:
-            self.precomputed_boundary_matrix = computed_matrix
+        self.precomputed_codes = computed_codes
         if d and data.dim == 2:
             self.r = None
-            self.expand_factor = 10 #figure out appropraite way to calculate this.
+            self.expand_factor = 25 #figure out appropraite way to calculate this.
             self.turtle = t
             self.turtle.hideturtle()
             self.turtle.speed(0)#fastest possible speed
@@ -102,20 +107,22 @@ class Filtration():
                 
 
     def build_epsilon(self,epsilon):
+
         if self.d == True:
             r = epsilon * self.expand_factor
             for x in self.data.points:
                 self.turtle.pen(pencolor="red")
+                self.turtle.fillcolor("blue")
                 draw_circle(self.expand_factor*x[0],self.expand_factor*x[1],r,self.turtle)
                 if self.r != None:
                      self.turtle.pen(pencolor="white")
                      draw_circle(self.expand_factor*x[0],self.expand_factor*x[1],self.r,self.turtle)
                      self.turtle.pen(pencolor="red")
             
-        self.r = r
+            self.r = r
         avaliable_edges = (filter(lambda x: self.data.pdict[x] <= epsilon, self.data.pdict.keys()))
         temp_sim = []
-        for x in range(0,self.data.dim+1):
+        for x in range(0,self.data.dim+1): #is max size dim+1 or dim +2 -> wiki says dim+2, but agg... that is ugly... let's stick to triangles
             if x == 0: 
                 temp_sim += map(lambda x: [x], list(set(map(lambda x: x[0], avaliable_edges))))
 
@@ -151,10 +158,9 @@ class Filtration():
 
             last_epsilon = self.simplicies_index[s-1]
             for i in range(s,e):
-
                 self.simplicies_index[i] = (epsilon+last_epsilon)
 
-            if d and temp_sim != []:
+            if self.d and temp_sim != []:
                 for sim in temp_sim:
 
                     dim = len(sim)
@@ -175,9 +181,60 @@ class Filtration():
         self.simplicies = f7(self.simplicies)
             
     def build_simplex_complex(self): #O(2^|S|-1)
+        #This should be organized in a somewhat better way visa vi avoding crap when we aren't drawing...
+        lowest_data_y = 2*float(min(map(lambda x: x[1],self.data.points))) #expand factor
+        top_x = -300.0
+        top_y = lowest_data_y
+        length = 600.0
+        max_dis =  float(max(self.data.distances))
+        def distance_convert(d): 
+            if d == None:
+                return(max_dis)
+            return (float(d)/max_dis)*length 
+                
+        
+
+        height = 300.0
+        if self.precomputed_codes != None: bars = float(len(self.precomputed_codes))
+        else: bars = 1 #we are not using them
+        bar_height = height/bars
+
+        def distane_to_turtle_cord(bar_num,dist): 
+            #given the bar number and the epsilon distance, returns the coordinates for the horizontal line at that epsilon distance
+            x_cord = top_x + distance_convert(dist)
+            y_cord_1 = top_y - bar_num*bar_height
+            y_cord_2 = y_cord_1 - bar_height
+            return((x_cord,y_cord_1,y_cord_2))
+        
+        
+        if self.precomputed_codes != None: sorted_barcodes = sorted(self.precomputed_codes,key=lambda x: x[0][1])
+        
         try:
-            for x in self.data.distances:
-                self.build_epsilon(x)
+            for x in range(0,len(self.data.distances)):
+                e = self.data.distances[x]
+                self.build_epsilon(e)
+                if self.precomputed_codes != None:
+                    print("Epsilon is {0}".format(e))
+                    for z in range(0,len(self.precomputed_codes)): #god this only makes it worse!!!
+                        b = self.precomputed_codes[x]
+                        if b[0][1] > e:
+                            pass
+                        else:
+                            first_horizontal = distane_to_turtle_cord(z,b[0][1])
+                            second_horizontal = distane_to_turtle_cord(z,min(b[1][1],e))
+                            t.pu() #deal with consistency later...
+                            t.goto(first_horizontal[0],first_horizontal[1])
+                            t.pd()
+                            t.goto(second_horizontal[0],second_horizontal[1])
+                            t.goto(second_horizontal[0],second_horizontal[2])
+                            t.goto(first_horizontal[0],first_horizontal[2])
+                            t.pu()
+                            
+                            
+                    
+                        
+                    
+                    
         except KeyboardInterrupt:
             return
     def build_boundary_matrix(self): 
@@ -213,49 +270,49 @@ class Filtration():
                         for x in range(0,self.simplicies_count):
                             self.boundary_matrix[x,j] = ((self.boundary_matrix[x,j] + self.boundary_matrix[x,i]) % 2) #adding cols over the field F_2
 
-    def read_barcodes(self):
-        barcode = []
-        lows = map(lambda j: self.low(j,self.boundary_matrix),range(0,self.simplicies_count))
+    def read_barcodes(self): #O(n^2)
+        barcode = dict()
+        lows = map(lambda j: self.low(j,self.boundary_matrix),range(0,self.simplicies_count)) #takes forever
         for x in range(0,self.simplicies_count):
+            print("examing barcode with simplex: {0}".format(x))
             l = lows[x]
             if l != None:
-                barcode.append(((l,self.simplicies_index[l]),(x,self.simplicies_index[x]))) #something is born with l and lies with x
+                
+                c = ((l,self.simplicies_index[l]),(x,self.simplicies_index[x])) #something is born with l and lies with x
+                print(c)
+                if not barcode.has_key(c):
+                    barcode[c] = 1
 
             else:
                 if x in lows:
                     inverse_x = lows.index(x)
-                    barcode.append(((x,self.simplicies_index[x]),(inverse_x,self.simplicies_index[inverse_x])))
+
+                    c = ((x,self.simplicies_index[x]),(inverse_x,self.simplicies_index[inverse_x]))
+                    print(c)
+                    if not barcode.has_key(c):
+                        barcode[c] = 1
                 else:
-                    barcode.append(((x,self.simplicies_index[x]),(None,None))) #no death of the feature
-        return(list(set(barcode)))
+
+                    c = ((x,self.simplicies_index[x]),(None,None)) #no death of the feature
+                    print(c)
+                    barcode[c] = 1 
+        return(list(set(barcode.keys())))
 
     def run(self):
         print("Building Complex")
         self.build_simplex_complex()
         print("Complex built")
+        print("Simplicies: {0}".format(len(self.simplicies)))
         print("Generating Boundary Matrix")
         self.build_boundary_matrix()
         print("Generated Boundary Matrix")
         print("Generating barcodes")
         self.boundary_to_barcodes()
+        results = self.read_barcodes()
+        
+        if self.p:
+            print("drawing!")
+            draw = Filtration(self.data,d=True,computed_codes = filter(lambda x: x[1][0] == None or x[0][1] != x[1][1],results))
+            draw.build_simplex_complex()
         print("Barcodes ready:")
-        return(self.read_barcodes())
-        
-                
-  
-        
-        
-        
-
-
-
-
-            
-        
-
-    
-
-
-        
-
-
+        return(results)
